@@ -1,13 +1,19 @@
 import logging
 import time
 from typing import Optional
+from pathlib import Path
 from nse import NSE
 
-# Configure logging
+# 1. Define the safe user directory for logs and downloads
+user_dir = Path.home() / ".nse_terminal"
+user_dir.mkdir(parents=True, exist_ok=True)
+log_path = user_dir / "fetcher.log"
+
+# 2. Configure logging to use the safe absolute path
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("fetcher.log")]
+    handlers=[logging.FileHandler(str(log_path))]
 )
 logger = logging.getLogger("NSE_Fetcher")
 
@@ -22,7 +28,9 @@ class NSEDataFetcher:
         if cls._instance is None:
             cls._instance = super(NSEDataFetcher, cls).__new__(cls)
             logger.info("Initializing persistent NSE Session...")
-            cls._client = NSE(download_folder=".") 
+            
+            # 3. Update the download folder so the NSE library doesn't crash in Program Files
+            cls._client = NSE(download_folder=str(user_dir)) 
         return cls._instance
 
     def get_option_chain(self, symbol: str = "NIFTY", retries: int = 3) -> Optional[dict]:
