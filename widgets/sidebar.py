@@ -1,5 +1,4 @@
 """
------------------------------------
 sidebar.py — Quick Links Sidebar
 -----------------------------------
 
@@ -23,20 +22,14 @@ LINKS_FILE = Path.home() / ".nse_terminal" / "links.json"
 
 
 def _load_links() -> dict:
-    """Loads links, migrating old flat lists to the new dictionary schema safely."""
     try:
         LINKS_FILE.parent.mkdir(parents=True, exist_ok=True)
         if LINKS_FILE.exists():
             data = json.loads(LINKS_FILE.read_text(encoding="utf-8"))
-            
-            # --- MIGRATION CHECK ---
-            # If the user has an old links.json that is just a list,
-            # we safely migrate it to the new schema under the 'nse' key.
             if isinstance(data, list):
                 migrated_data = {"nse": data}
-                _save_links(migrated_data) # Save the fix immediately
+                _save_links(migrated_data)
                 return migrated_data
-                
             return data
     except Exception:
         pass
@@ -57,7 +50,37 @@ def _save_links(links_dict: dict) -> None:
 class AddLinkModal(ModalScreen[dict | None]):
     CSS = """
     AddLinkModal { align: center middle; background: rgba(0,0,0,0.75); }
-    #add_modal_box { width: 52; height: auto; background: #161b22; border: solid #30363d; padding: 1 2; }
+    #add_modal_box {
+        width: 52; 
+        height: auto; 
+        background: #161b22; 
+        border: solid #30363d; 
+        padding: 1 2; 
+    }
+    
+    #close_btn {
+        dock: right;
+        width: 3; 
+        min-width: 3; 
+        height: 1; 
+        border: none;
+        background: transparent; 
+        color: #8b949e; 
+        padding: 0; 
+        text-style: bold;
+    }
+    #close_btn:hover { background: #da3633; color: #ffffff; }
+
+    #add_modal_header {
+        height: 1;
+        width: 1fr;
+        margin-bottom: 1;
+    }
+    #add_modal_title {
+        color: #58a6ff;
+        text-style: bold;
+        width: 1fr;
+    }
     #add_modal_box Label { color: #58a6ff; text-style: bold; margin-bottom: 1; }
     #add_modal_box .field-label { color: #8b949e; margin-top: 1; margin-bottom: 0; }
     Input { background: #0d1117; border: solid #30363d; color: #e6edf3; margin-bottom: 1; }
@@ -73,7 +96,9 @@ class AddLinkModal(ModalScreen[dict | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="add_modal_box"):
-            yield Label("Add New Link")
+            with Horizontal(id="add_modal_header"):
+                yield Label("Add New Link", id="add_modal_title")
+                yield Button("✕", id="close_btn")
             yield Label("Name", classes="field-label")
             yield Input(placeholder="e.g. Zerodha Charts", id="inp_name")
             yield Label("URL", classes="field-label")
@@ -83,6 +108,10 @@ class AddLinkModal(ModalScreen[dict | None]):
                 yield Button("Add Link", id="btn_confirm")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close_btn":
+            self.dismiss(None)
+            return
+
         if event.button.id == "btn_confirm":
             name = self.query_one("#inp_name", Input).value.strip()
             url  = self.query_one("#inp_url",  Input).value.strip()
@@ -92,7 +121,7 @@ class AddLinkModal(ModalScreen[dict | None]):
                 self.dismiss({"name": name, "url": url})
             else:
                 self.app.notify("Both name and URL are required.", severity="warning", timeout=3)
-        else:
+        elif event.button.id == "btn_cancel_add":
             self.dismiss(None)
 
     def action_cancel_add(self) -> None:
@@ -100,7 +129,6 @@ class AddLinkModal(ModalScreen[dict | None]):
 
 
 # ------------------ Link Row ---------------------------------
-# (Unchanged)
 class LinkRow(Container):
     CSS = """
     LinkRow { height: 5; min-height: 5; padding: 0 1; margin-bottom: 1; background: #0d1117; border: solid #21262d; border-radius: 4; }
@@ -139,11 +167,35 @@ class LinkRow(Container):
 
 
 # --------------- Sidebar Screen -----------------------------
-
 class LinkSidebar(ModalScreen):
     CSS = """
     LinkSidebar { align: right middle; background: rgba(0,0,0,0.5); }
-    #sidebar_panel { width: 38; height: 100%; background: #161b22; border-left: solid #30363d; padding: 1; }
+    #sidebar_panel {
+        width: 38; 
+        height: 100%; 
+        background: #161b22; 
+        border-left: solid #30363d; 
+        padding: 1; 
+    }
+    
+    #close_btn {
+        dock: right;
+        width: 3; 
+        min-width: 3; 
+        height: 1; 
+        border: none;
+        background: transparent; 
+        color: #8b949e; 
+        padding: 0; 
+        text-style: bold;
+    }
+    #close_btn:hover { background: #da3633; color: #ffffff; }
+
+    #sidebar_header {
+        height: 1;
+        width: 1fr;
+        margin-bottom: 1;
+    }
     #sidebar_title { color: #58a6ff; text-style: bold; padding: 0 1; margin-bottom: 1; border-bottom: solid #30363d; height: 3; content-align: left middle; }
     #links_scroll { height: 1fr; padding-bottom: 1; scrollbar-gutter: stable; }
     #no_links_label { color: #8b949e; padding: 3 1; text-align: center; }
@@ -157,28 +209,24 @@ class LinkSidebar(ModalScreen):
     ]
 
     def __init__(self, terminal_id: str, **kwargs):
-
         super().__init__(**kwargs)
         self.terminal_id = terminal_id
-        
-        # Load the global dictionary
         self._all_links = _load_links()
         
-        # If this terminal doesn't have a list yet, initialize an empty one safely
         if self.terminal_id not in self._all_links:
             self._all_links[self.terminal_id] = []
             
-        # Point self._links strictly to the current terminal's list
         self._links = self._all_links[self.terminal_id]
 
     def _save_current_context(self) -> None:
-        """Helper to save the global dictionary after a local change."""
         self._all_links[self.terminal_id] = self._links
         _save_links(self._all_links)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="sidebar_panel"):
-            yield Label("", id="sidebar_title") # Title set dynamically below
+            with Horizontal(id="sidebar_header"):
+                yield Label("", id="sidebar_title")
+                yield Button("✕", id="close_btn")
             yield VerticalScroll(id="links_scroll")
             yield Button("＋  Add Link", id="btn_add_link")
 
@@ -188,7 +236,6 @@ class LinkSidebar(ModalScreen):
     def _update_title(self) -> None:
         try:
             title_label = self.query_one("#sidebar_title", Label)
-            # Make the title show "NSE Links" or "BSE Links" dynamically
             title = f"  🔗 {self.terminal_id.upper()} Links ({len(self._links)}/10)"
             title_label.update(title)
         except Exception:
@@ -197,7 +244,6 @@ class LinkSidebar(ModalScreen):
     def _render_links(self) -> None:
         scroll = self.query_one("#links_scroll", VerticalScroll)
         scroll.remove_children()
-
         self._update_title()
 
         if not self._links:
@@ -207,6 +253,10 @@ class LinkSidebar(ModalScreen):
                 scroll.mount(LinkRow(i, link["name"], link["url"]))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close_btn":
+            self.dismiss()
+            return
+
         if event.button.id == "btn_add_link":
             if len(self._links) >= 10:
                 self.app.notify(
@@ -219,14 +269,14 @@ class LinkSidebar(ModalScreen):
 
     def on_link_row_delete_requested(self, event: LinkRow.DeleteRequested) -> None:
         self._links.pop(event.index)
-        self._save_current_context() # Save the specific context
+        self._save_current_context()
         self._render_links()
         self.app.notify("Link removed.", severity="warning", timeout=2)
 
     def _on_link_added(self, result: dict | None) -> None:
         if result:
             self._links.append(result)
-            self._save_current_context() # Save the specific context
+            self._save_current_context()
             self._render_links()
             self.app.notify(f"'{result['name']}' added.", severity="information", timeout=3)
 

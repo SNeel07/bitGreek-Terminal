@@ -1,9 +1,11 @@
 """
--------------------------------
 spark.py — Sparkline Generator
--------------------------------
+===============================
+Converts a rolling OI history (list of dicts from store.py) into a
+5-character unicode sparkline string like ▁▂▄▇█
 
-NOTE: THIS IS AN EXPERIMENTAL FEATURE. IT IS NOT USED IN THE TERMINAL YET.
+This is not a Textual widget — it's a pure function that returns a string.
+The string gets embedded directly inside the trend cell in oi_table.py.
 
 Example output:
     ▁▁▂▄▇  (OI steadily building up)
