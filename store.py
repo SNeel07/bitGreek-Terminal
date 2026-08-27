@@ -92,6 +92,15 @@ class OptionsDataStore:
         self.available_expiries: List[str] = []
         self.current_expiry: str = ""
         self._current_expiry_norm: str = ""
+    
+    def clear_store(self):
+        """Wipes the data store completely when switching between different stock symbols."""
+        self._data.clear()
+        self._underlying_price = 0.0
+        self._timestamp = ""
+        self.available_expiries = []
+        self.current_expiry = ""
+        self._current_expiry_norm = ""
 
     def update_snapshot(self, raw_data: Dict[str, Any], target_expiry: Optional[str] = None):
         if not raw_data:
