@@ -1,18 +1,18 @@
 """
 -------------------------------------------
-  app.py — Multi-Exchange Options Terminal
+  app.py — Dynamic Stocks Options Terminal
 -------------------------------------------
 
 Live options OI terminal built with Textual.
-Supports NSE (live) and BSE (coming soon) terminals.
+Supports switching between NIFTY index and individual equities.
 
 Keybindings (global):
     q — Quit
     s — Toggle quick links sidebar
-    t — Switch terminal
+    t — Switch active stock/index
     i — Change fetch interval
 
-Keybindings (NSE screen):
+Keybindings (Terminal screen):
     r — Force refresh
     f — Filter expiry date
 """
@@ -40,59 +40,84 @@ from widgets.switcher import TerminalSwitcherModal
 from widgets.interval_modal import IntervalModal, INTERVALS
 
 
-
 # --------------- CONSTANTS ----------------
 
-SYMBOL           = "NIFTY"
 DEFAULT_INTERVAL = 60       # Default poll interval - 60 seconds
 ATM_WING         = 70
 IST              = ZoneInfo("Asia/Kolkata")
 
 
+# --------------- COMPANIES MAPPING ----------------
+# Mapping tickers to their specific NSE company descriptors
+SUPPORTED_SYMBOLS = {
+    "NIFTY": "NIFTY 50 Index",
+    "BANKNIFTY": "NIFTY Bank Index",
+    "RELIANCE": "Reliance Industries Limited",
+    "HDFCBANK": "HDFC Bank Limited",
+    "BHARTIARTL": "Bharti Airtel Limited",
+    "AXISBANK": "Axis Bank Limited",
+    "ICICIBANK": "ICICI Bank Limited",
+    "SBIN": "State Bank of India",
+    "TCS": "Tata Consultancy Services Limited",
+    "BAJFINANCE": "Bajaj Finance Limited",
+    "LT": "Larsen & Toubro Limited",
+    "HINDUNILVR": "Hindustan Unilever Limited",
+    "INFY": "Infosys Limited",
+    "SUNPHARMA": "Sun Pharmaceutical Industries Limited",
+    "ADANIPORTS": "Adani Ports and Special Economic Zone Limited",
+    "MARUTI": "Maruti Suzuki India Limited",
+    "ADANIENT": "Adani Enterprises Limited",
+    "M&M": "Mahindra & Mahindra Limited",
+    "TITAN": "Titan Company Limited",
+    "ITC": "ITC Limited",
+    "NTPC": "NTPC Limited",
+    "ULTRACEMCO": "UltraTech Cement Limited",
+    "ONGC": "Oil & Natural Gas Corporation Limited",
+    "JSWSTEEL": "JSW Steel Limited",
+    "HCLTECH": "HCL Technologies Limited",
+    "BEL": "Bharat Electronics Limited",
+    "BAJAJ-AUTO": "Bajaj Auto Limited",
+    "NESTLEIND": "Nestle India Limited",
+    "COALINDIA": "Coal India Limited",
+    "POWERGRID": "Power Grid Corporation of India Limited",
+    "BAJAJFINSV": "Bajaj Finserv Limited",
+    "ASIANPAINT": "Asian Paints Limited",
+    "TATASTEEL": "Tata Steel Limited",
+    "HINDALCO": "Hindalco Industries Limited",
+    "ETERNAL": "Eternal Limited",
+    "GRASIM": "Grasim Industries Limited",
+    "SHRIRAMFIN": "Shriram Finance Limited",
+    "EICHERMOT": "Eicher Motors Limited",
+    "WIPRO": "Wipro Limited",
+    "INDIGO": "InterGlobe Aviation Limited",
+    "SBILIFE": "SBI Life Insurance Company Limited",
+    "JIOFIN": "Jio Financial Services Limited",
+    "TECHM": "Tech Mahindra Limited",
+    "TRENT": "Trent Limited",
+    "TMPV": "Tata Motors Passenger Vehicles Limited",
+    "APOLLOHOSP": "Apollo Hospitals Enterprise Limited",
+    "HDFCLIFE": "HDFC Life Insurance Company Limited",
+    "CIPLA": "Cipla Limited",
+    "TATACONSUM": "Tata Consumer Products Limited",
+    "DRREDDY": "Dr. Reddy's Laboratories Limited",
+    "MAXHEALTH": "Max Healthcare Institute Limited",
+    "KOTAKBANK": "Kotak Mahindra Bank Limited"
+}
 
 
 # --------------- NSE TRADING HOLIDAYS 2026 ----------------------
 
-# Update this list every year(at the beginning) to get the updated market open/close status
 NSE_HOLIDAYS_2026 = {
-    "2026-01-15",  # Municipal Corporation Election Maharashtra
-    "2026-01-26",  # Republic Day
-    "2026-03-03",  # Holi
-    "2026-03-26",  # Ram Navami
-    "2026-03-31",  # Shri Mahavir Jayanti
-    "2026-04-03",  # Good Friday
-    "2026-04-14",  # Dr. Baba Saheb Ambedkar Jayanti
-    "2026-05-01",  # Maharashtra Day
-    "2026-05-28",  # Bakri Id
-    "2026-06-26",  # Muharram
-    "2026-09-14",  # Ganesh Chaturthi
-    "2026-10-02",  # Mahatma Gandhi Jayanti
-    "2026-10-20",  # Dussehra
-    "2026-11-08",  # Diwali laxmi Pujan
-    "2026-11-10",  # Diwali - Balipratipada
-    "2026-11-24",  # Prakash Gurpurb Sri Guru Nanak Dev
-    "2026-12-25",  # Christmas
+    "2026-01-15", "2026-01-26", "2026-03-03", "2026-03-26", "2026-03-31",
+    "2026-04-03", "2026-04-14", "2026-05-01", "2026-05-28", "2026-06-26",
+    "2026-09-14", "2026-10-02", "2026-10-20", "2026-11-08", "2026-11-10",
+    "2026-11-24", "2026-12-25"
 }
 
-BSE_HOLIDATS_2026 = NSE_HOLIDAYS_2026
-
-
-# Check Market open/close status
 def is_trading_holiday(date: "datetime") -> bool:
     return date.strftime("%Y-%m-%d") in NSE_HOLIDAYS_2026
 
-BSE_EXPIRY_DATES = [
-    "20-May-2026", "27-May-2026", "04-Jun-2026",
-    "11-Jun-2026", "18-Jun-2026", "25-Jun-2026",
-]
-
-
 def is_market_open() -> bool:
-    """
-    Returns True only when NSE is actually trading:
-    - Weekday (Mon - Fri)
-    - Between 09:15 and 15:30 IST
-    """
     now = datetime.now(IST)
     if now.weekday() >= 5:
         return False
@@ -102,12 +127,13 @@ def is_market_open() -> bool:
     return 915 <= hhmm < 1530
 
 
-# ------------- SCREENS --------------------
+# ------------- SCREEN DEFINITION --------------------
 
-
-# NIFTY Options Terminal
-class NSEScreen(Screen):
-
+class OptionsDisplayScreen(Screen):
+    """
+    A single dynamic screen layout that handles rendering whichever 
+    symbol is currently active in the core application.
+    """
     BINDINGS = [
         ("r", "force_refresh", "Force Refresh"),
         ("f", "change_expiry", "Filter Expiry"),
@@ -115,7 +141,8 @@ class NSEScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield MarketHeader(symbol=SYMBOL, id="market_header")
+        # We assign an ID to target this header widget dynamically
+        yield MarketHeader(symbol=self.app.current_symbol, id="market_header")
         yield Container(OITable(), id="main_container")
         yield Footer()
 
@@ -124,35 +151,6 @@ class NSEScreen(Screen):
 
     def action_change_expiry(self):
         self.app.action_change_expiry()
-
-
-# BSE SENSEX Terminal (Under Construction)
-class BSEScreen(Screen):
-
-    BINDINGS = [
-        ("r", "nse_only", "Force Refresh"),
-        ("f", "nse_only", "Filter Expiry"),
-    ]
-
-    def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
-        yield MarketHeader(symbol="SENSEX", id="bse_market_header")
-        with Container(id="main_container"):
-            yield OITable()
-            yield Static(
-                "BSE Data — Coming Soon\n\n"
-                "BSE's option chain API is not publicly documented.\n"
-                "Contributors welcome",
-                id="bse_overlay"
-            )
-        yield Footer()
-
-    def on_mount(self) -> None:
-        nearest = BSE_EXPIRY_DATES[0] if BSE_EXPIRY_DATES else "—"
-        self.app.sub_title = f"SENSEX | Expiry: {nearest} | Spot: —"
-
-    def action_nse_only(self):
-        self.app.notify("BSE data not available yet.", severity="warning", timeout=3)
 
 
 # --------------- MAIN APPLICATION ------------------------
@@ -173,25 +171,11 @@ class TradingTerminal(App):
     #main_container {
         padding: 0 1;
         height: 1fr;
-        layers: base overlay;
     }
 
     DataTable {
         height: 1fr;
         border: solid #30363d;
-        layer: base;
-    }
-
-    #bse_overlay {
-        layer: overlay;
-        dock: top;
-        width: 100%;
-        text-align: center;
-        color: #8b949e;
-        background: #0d1117;
-        padding: 4 2;
-        text-style: bold;
-        margin-top: 4;
     }
 
     DataTable > .datatable--header  { background: #161b22; color: #e6edf3; text-style: bold; }
@@ -205,7 +189,7 @@ class TradingTerminal(App):
     BINDINGS = [
         ("q", "quit",             "Quit"),
         ("s", "toggle_sidebar",   "Links"),
-        ("t", "switch_terminal",  "Switch Terminal"),
+        ("t", "switch_terminal",  "Switch Symbol"),
         ("i", "change_interval",  "Interval"),
     ]
 
@@ -216,26 +200,28 @@ class TradingTerminal(App):
         self.last_raw_data    = None
         self.target_expiry    = None
         self._refresh_event   = threading.Event()
-        self.current_terminal = "nse"
-        # Poll interval — mutable at runtime, read by the worker loop
+        
+        # Track the active dynamic equity symbol (Default to NIFTY)
+        self.current_symbol   = "NIFTY"
         self.poll_interval    = DEFAULT_INTERVAL
 
     def on_mount(self) -> None:
         self.title = "Options Terminal"
-        self.install_screen(NSEScreen(), name="nse")
-        self.install_screen(BSEScreen(), name="bse")
-        self.push_screen("nse")
+        # Mount our single, dynamic display screen
+        self.install_screen(OptionsDisplayScreen(), name="options_display")
+        self.push_screen("options_display")
         self.update_data_loop()
 
     # -------------- GLOBAL ACTIONS -----------------------
 
     def action_toggle_sidebar(self):
-        self.push_screen(LinkSidebar(self.current_terminal))
+        self.push_screen(LinkSidebar(self.current_symbol.lower()))
 
     def action_switch_terminal(self):
+        # We pass our current selected symbol into the modal selection tool
         self.push_screen(
-            TerminalSwitcherModal(self.current_terminal),
-            self._on_terminal_switched
+            TerminalSwitcherModal(self.current_symbol),
+            self._on_symbol_switched
         )
 
     def action_change_interval(self):
@@ -247,30 +233,39 @@ class TradingTerminal(App):
     def _on_interval_selected(self, seconds: int | None):
         if seconds and seconds != self.poll_interval:
             self.poll_interval = seconds
-            label = next(
-                (lbl for lbl, s in INTERVALS if s == seconds),
-                f"{seconds}s"
-            )
-            self.notify(
-                f"Fetch interval set to {label}",
-                severity="information",
-                timeout=3
-            )
-            # Wake the sleeping loop immediately so it respects the new interval
+            label = next((lbl for lbl, s in INTERVALS if s == seconds), f"{seconds}s")
+            self.notify(f"Fetch interval set to {label}", severity="information", timeout=3)
             self._refresh_event.set()
 
-    def _on_terminal_switched(self, selected: str | None):
-        if not selected or selected == self.current_terminal:
+    def _on_symbol_switched(self, selected_symbol: str | None):
+        """
+        Triggered when a user picks a company from the selection modal window.
+        """
+        if not selected_symbol or selected_symbol == self.current_symbol:
             return
-        self.current_terminal = selected
-        self.switch_screen(selected)
+            
+        self.current_symbol = selected_symbol
+        
+        # Reset current data buffers so we don't mix up calculations between stock transitions
+        self.last_raw_data = None
+        self.target_expiry = None
+        self.store.clear_store()
+        
+        # Dynamically change the structural target symbol in our active widgets
+        try:
+            header = self.screen.query_one("#market_header", MarketHeader)
+            header.symbol = selected_symbol
+        except Exception:
+            pass
+
         self.notify(
-            f"Switched to {selected.upper()} Terminal",
+            f"Switched to {SUPPORTED_SYMBOLS.get(selected_symbol, selected_symbol)}",
             severity="information",
             timeout=3
         )
-        if selected == "nse":
-            self.call_later(self.refresh_ui, is_market_open())
+        
+        # Force the worker thread to skip the remaining sleep loop time and fetch the new ticker data instantly
+        self._refresh_event.set()
 
     def action_force_refresh(self):
         self.notify("Force refresh triggered...", severity="warning", timeout=3)
@@ -279,7 +274,7 @@ class TradingTerminal(App):
     def action_change_expiry(self):
         expiries = getattr(self.store, 'available_expiries', [])
         if not expiries:
-            self.notify("No expiries yet. Waiting for first fetch...", severity="warning")
+            self.notify("No expiries yet. Waiting for first data fetch...", severity="warning")
             return
         self.push_screen(ExpiryModal(expiries), self._apply_expiry)
 
@@ -292,47 +287,45 @@ class TradingTerminal(App):
                 self.refresh_ui(is_market_open())
 
 
-    # -------------- BACKGROUND POLLING WORKER ---------------------------
+    # -------------- DYNAMIC BACKGROUND POLLING WORKER ---------------------------
 
     @work(thread=True)
     def update_data_loop(self):
         """
-        Persistent NSE polling loop.
-        Uses self.poll_interval which can be changed at runtime via the
-        interval modal — no restart needed, takes effect on the next cycle.
-        Force refresh and interval changes both wake the Event early.
+        Persistent data engine.
+        Uses self.current_symbol dynamically to pull whichever target stock is active.
         """
         while True:
-            market_open = is_market_open()
-            now_str     = datetime.now(IST).strftime("%H:%M:%S")
+            market_open   = is_market_open()
+            active_ticker = self.current_symbol
+            now_str       = datetime.now(IST).strftime("%H:%M:%S")
 
             self.call_from_thread(self._refresh_header, market_open)
 
-            if self.current_terminal == "nse":
-                self.call_from_thread(
-                    self.notify,
-                    f"Fetching live NSE data... [{now_str}]",
-                    severity="information",
-                    timeout=4,
-                )
+            self.call_from_thread(
+                self.notify,
+                f"Fetching live {active_ticker} data... [{now_str}]",
+                severity="information",
+                timeout=4,
+            )
 
-            raw_data = self.fetcher.get_option_chain(SYMBOL)
+            # CRITICAL PASS: Pass the active dynamic ticker straight to your scraper object
+            raw_data = self.fetcher.get_option_chain(active_ticker)
 
-            if raw_data:
+            # Ensure the user didn't change tickers mid-fetch cycle
+            if raw_data and self.current_symbol == active_ticker:
                 self.last_raw_data = raw_data
                 self.store.update_snapshot(raw_data, self.target_expiry)
-                if self.current_terminal == "nse":
-                    self.call_from_thread(self.refresh_ui, market_open)
-            else:
-                if self.current_terminal == "nse":
-                    self.call_from_thread(
-                        self.notify,
-                        f"Fetch failed at {now_str}. Retrying in {self.poll_interval}s",
-                        severity="error",
-                        timeout=8,
-                    )
+                self.call_from_thread(self.refresh_ui, market_open)
+            elif not raw_data:
+                self.call_from_thread(
+                    self.notify,
+                    f"Fetch failed for {active_ticker} at {now_str}. Retrying...",
+                    severity="error",
+                    timeout=6,
+                )
 
-            # Sleep for poll_interval but wake early on force refresh or interval change [both call self._refresh_event.set()]
+            # Wait for interval duration, or break sleep loop instantly on key commands
             self._refresh_event.clear()
             self._refresh_event.wait(timeout=self.poll_interval)
 
@@ -343,18 +336,11 @@ class TradingTerminal(App):
         self._refresh_table()
 
     def _refresh_header(self, market_open: bool):
-        if self.current_terminal == "nse":
-            try:
-                header = self.screen.query_one("#market_header", MarketHeader)
-                header.refresh_stats(self.store, market_open)
-            except Exception:
-                pass
-        else:
-            try:
-                header = self.screen.query_one("#bse_market_header", MarketHeader)
-                header.refresh_market_status(market_open)
-            except Exception:
-                pass
+        try:
+            header = self.screen.query_one("#market_header", MarketHeader)
+            header.refresh_stats(self.store, market_open)
+        except Exception:
+            pass
 
     def _refresh_table(self):
         try:
@@ -368,7 +354,8 @@ class TradingTerminal(App):
         underlying  = self.store.current_underlying
         current_exp = getattr(self.store, 'current_expiry', None) or "Awaiting API"
 
-        self.sub_title = f"{SYMBOL} | Expiry: {current_exp} | Spot: ₹{underlying:,.2f}"
+        # Dynamically set title based on the active dynamic ticker symbol state
+        self.sub_title = f"{self.current_symbol} | Expiry: {current_exp} | Spot: ₹{underlying:,.2f}"
 
         if underlying == 0 or not strikes:
             return
@@ -405,8 +392,6 @@ class TradingTerminal(App):
                 f"{pe.get('oi', 0):,}",
                 self._style_doi(pe.get('doi', 0)),
             )
-
-    # ---------------- STYLE HELPERS -----------------------
 
     @staticmethod
     def _style_trend(text: str) -> Text:
