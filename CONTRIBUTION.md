@@ -11,10 +11,6 @@ At this moment, we are exclusively seeking contributions to solve two specific c
 * **The Problem:** The expiry filter is currently broken. When a user navigates to a specific options expiry date, the data table renders completely blank and no data is visible. 
 * **The Goal:** Debug the data routing between the fetcher, the store, and the UI table to ensure the options chain renders correctly when a specific expiry is selected.
 
-### 2. Feature Integration: Unlocking the BSE Terminal
-* **The Problem:** The framework for a multi-exchange setup exists, but the BSE (SENSEX) terminal is currently locked because we have not yet reverse-engineered or implemented the exact data-fetching logic for BSE endpoints.
-* **The Goal:** Successfully fetch, parse, and route BSE options chain data into the existing terminal architecture so users can toggle between NSE and BSE seamlessly. And once you are able to fetch the BSE options chain data, you may try to fix the filter expiry feature here as well.
-
 ## Important Note on Scope
 To maintain the stability and specific architectural vision of this project, **we are currently ONLY accepting Pull Requests (PRs) that address the two priorities listed above.** Please do not submit PRs for UI overhauls, new color schemes, or heavy structural changes at this time. 
 
@@ -22,7 +18,7 @@ To maintain the stability and specific architectural vision of this project, **w
 
 ## How to Contribute
 1. **Fork the repository** and clone it to your local machine.
-2. **Create a branch** specifically for the issue you are tackling (e.g., `git checkout -b fix/expiry-filter-blank` or `git checkout -b feat/bse-data-fetch`).
+2. **Create a branch** specifically for the issue you are tackling (e.g., `git checkout -b fix/expiry-filter-blank`).
 3. **Write your code**, ensuring it adheres to the existing data-first, lightweight architecture.
 4. **Test your changes** thoroughly to ensure the terminal remains non-blocking and responsive.
 5. **Submit a Pull Request** with a clear explanation of how you solved the problem.
