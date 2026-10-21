@@ -1,8 +1,8 @@
 import logging
 import time
+import requests
 from typing import Optional
 from pathlib import Path
-from nse import NSE
 
 # 1. Define the safe user directory for logs and downloads
 user_dir = Path.home() / ".nse_terminal"
@@ -22,42 +22,76 @@ class NSEDataFetcher:
     Singleton class to manage a persistent connection to the NSE servers.
     """
     _instance = None
-    _client: Optional[NSE] = None
+    session = None
+    headers = None
 
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(NSEDataFetcher, cls).__new__(cls)
-            logger.info("Initializing persistent NSE Session...")
+            logger.info("Initializing persistent NSE Session via Requests...")
             
-            # 3. Update the download folder so the NSE library doesn't crash in Program Files
-            cls._client = NSE(download_folder=str(user_dir)) 
+            cls.session = requests.Session()
+            # Standard headers without Accept-Encoding to prevent binary Brotli data
+            cls.headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.nseindia.com/option-chain",
+            }
         return cls._instance
 
-    def get_option_chain(self, symbol: str = "NIFTY", retries: int = 3) -> Optional[dict]:
+    def _get_cookies(self):
+        """Hit the homepage once to establish a valid session cookie."""
+        try:
+            self.session.get("https://www.nseindia.com", headers=self.headers, timeout=5)
+        except Exception as e:
+            logger.error(f"Failed to fetch initial cookies: {e}")
+
+    def get_option_chain(self, symbol: str = "NIFTY", target_expiry: str = None, retries: int = 3) -> Optional[dict]:
         """
-        Fetches the latest option chain. Uses dynamic attribute checking to ensure 
-        we catch the correct method name from the external package.
+        Fetches the option chain dynamically using the v3 endpoint and specific expiry.
         """
         for attempt in range(retries):
             try:
                 logger.info(f"Fetching Option Chain for {symbol} (Attempt {attempt + 1}/{retries})...")
+                self._get_cookies()
+
+                # Fetch Contract Info to get the list of all available expiry dates
+                info_url = f"https://www.nseindia.com/api/option-chain-contract-info?symbol={symbol}"
+                expiries = []
+                info_response = self.session.get(info_url, headers=self.headers, timeout=5)
                 
-                # Dynamic method execution to bypass package documentation gaps
-                if hasattr(self._client, 'optionChain'):
-                    data = self._client.optionChain(symbol)
-                elif hasattr(self._client, 'getOptionChain'):
-                    data = self._client.getOptionChain(symbol)
-                else:
-                    # If the method is named something else, print all available methods instantly
-                    available_methods = [m for m in dir(self._client) if not m.startswith('_')]
-                    logger.error(f"Option chain method missing! Available methods are: {available_methods}")
+                if info_response.status_code == 200:
+                    expiries = info_response.json().get("expiryDates", [])
+                
+                # Determine which expiry to fetch (default to the closest one if None)
+                if not target_expiry and expiries:
+                    target_expiry = expiries[0]
+                elif not target_expiry:
+                    logger.warning("No target expiry provided and failed to fetch expiries list.")
                     return None
+
+                logger.info(f"Target Expiry Selected: {target_expiry}")
+
+                # Fetch the exact v3 data for that specific date
+                symbol_type = "Indices" if symbol in ("NIFTY", "BANKNIFTY") else "Equities"
+                chain_url = f"https://www.nseindia.com/api/option-chain-v3?type={symbol_type}&symbol={symbol}&expiry={target_expiry}"
+                chain_response = self.session.get(chain_url, headers=self.headers, timeout=5)
                 
-                if data:
+                if chain_response.status_code == 200:
+                    data = chain_response.json()
+
+                    # Safely inject the expiry list into the payload so your store.py can read it
+                    if "records" not in data:
+                        data["records"] = {}
+                    data["records"]["expiryDates"] = expiries
+
                     return data
                 else:
-                    logger.warning("Received empty data from NSE.")
-                    
+                    logger.warning(f"Failed to fetch chain. Status Code: {chain_response.status_code}")
+
+            except requests.exceptions.JSONDecodeError:
+                logger.error("JSONDecodeError: Server returned non-JSON data (possibly blocked).")
             except Exception as e:
                 logger.error(f"Network or parsing error during fetch: {e}")
             
@@ -86,6 +120,7 @@ if __name__ == "__main__":
             print(f"Top-level keys: {list(test_data.keys())}")
             if 'records' in test_data:
                  print(f"Records keys: {list(test_data['records'].keys())}")
+                 print(f"Expiries found: {test_data['records'].get('expiryDates', [])[:3]}...")
         else:
             print("Data is not a dictionary. Raw output:")
             print(test_data)
