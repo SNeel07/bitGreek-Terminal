@@ -10,7 +10,7 @@ The bitGreek Terminal is a light-weight market analysis tool designed to visuali
 * [Special Note](#special-note)
 
 ## **Installation**
-For those who want to download the ready-made tool [click here](https://bitgreekterminal.netlify.app/) <br>
+For those who want to download the ready-made tool [click here](https://bitgreekterminal.netlify.app/) for the latest version.<br>
 **Note:** When trying to run the app for the first time, you will most certainly get a message from Windows Defender. There's nothing to worry about!<br>
 Just click on "**More info**" and then "**Run anyway**"
 
