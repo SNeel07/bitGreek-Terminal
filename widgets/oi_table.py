@@ -2,10 +2,7 @@
 oi_table.py — Options OI Table Widget
 ----------------------------------------
 
-Symmetrical option chain layout with strike in the centre.
-The trend cell now embeds a sparkline alongside the label:
-
-    CE ΔOI | CE OI | CE LTP |  CE Trend  | STRIKE | PE Trend | PE LTP | PE OI | PE ΔOI
+Used for diplaying the headers on the table
 """
 
 from textual.widgets import DataTable
@@ -30,15 +27,4 @@ class OITable(Widget):
         table.cursor_type  = "row"
         table.zebra_stripes = True
 
-        # Symmetrical layout — strike in the centre
-        table.add_columns(
-            "CE ΔOI",
-            "CE OI",
-            "CE LTP",
-            "CE Trend",
-            "Strike",
-            "PE Trend",        
-            "PE LTP",
-            "PE OI",
-            "PE ΔOI",
-        )
+        self.app.rebuild_columns()
