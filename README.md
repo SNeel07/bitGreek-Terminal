@@ -1,12 +1,12 @@
-# **NSE OPTIONS TERMINAL**
+# **BITGREEK TERMINAL**
 
-The NSE Options Terminal is a light-weight market analysis tool designed to visualize and simplify the NSE's flagship index NIFTY50 option chain. Instead of displaying raw options chain data exactly as received from NSE, the terminal processes, organizes and highlights important metrics so traders can quickly understand market positioning, option activity and potential market direction.
+The bitGreek Terminal is a light-weight market analysis tool designed to visualize and simplify the NSE's option chain. Instead of displaying raw options chain data exactly as received from NSE, the terminal processes, organizes and highlights important metrics so traders can quickly understand market positioning, option activity and potential market direction.
 
 * [Installation](#installation)
 * [Why a Terminal](#why-a-terminal)
-* [Contributions](#how-can-you-help-us)
-* [Tech Stack & Architecture](#tech-stack-and-architecture)
 * [Everything about Options Market](#new-to-options-market)
+* [Tech Stack & Architecture](#tech-stack-and-architecture)
+* [Contributions](#how-can-you-help-us)
 * [Special Note](#special-note)
 
 ## **Installation**
@@ -26,11 +26,8 @@ This terminal acts as an analysis layer on top of NSE data by:
 
 The goal is not to replace NSE data, but to transform raw option chain information into actionable insights that can be understood by beginners, active traders and professional market participants alike.
 
-## **How can you help us?**
-This project is open for contributions. You can help us by contributing to the features mentioned in the [CONTRIBUTION.md](CONTRIBUTION.md)
-<br>
-The [CONTRIBUTION.md](CONTRIBUTION.md) will be updated as we move on with the fixes and new features.<br>
-To understand how the tool works under the hood please go through the [Tech Stack](#tech-stack-and-architecture) section
+## **New to Options Market?**
+If you are new to option chains and want to have a basic over view of those things work there, please go through the [OPTION_CHAIN.md](OPTION_CHAIN.md)
 
 ## **Tech Stack and Architecture**
 **Language**: Python 3.11+ — chosen for its rich ecosystem of financial and terminal UI libraries.
@@ -41,22 +38,17 @@ To understand how the tool works under the hood please go through the [Tech Stac
 |---|---|---|
 | [Textual](https://github.com/Textualize/textual) | ≥0.52 | Terminal UI framework — screens, widgets, layout, keybindings |
 | [Rich](https://github.com/Textualize/rich) | ≥13.0 | Text styling, coloured cells, and inline markup inside Textual |
-| [nse](https://github.com/BennyThadikaran/NseIndiaApi) | ≥2.0 | NSE session management, cookie handling, and option chain fetching |
+| [Requests](https://requests.readthedocs.io/) | ≥2.31 | Custom session management, bot-bypassing headers, and lightweight fetching |
 
 ### How Data is Fetched?
 
-NSE does not provide a public REST API. Their website uses session-based authentication — every request must carry a valid cookie obtained by first hitting the NSE homepage.
+NSE aggressively blocks bots and scrapers. They do not provide a public REST API, so the terminal uses a custom `requests.Session()` to mimic a real browser footprint.
 
-The `nse` library (by Benny Thadikaran) handles this automatically:
-1. On startup, it hits `nseindia.com` to warm up a session and store cookies to disk
-2. Subsequent calls to `optionChain("NIFTY")` attach these cookies to the API request
-3. Cookies expire every ~5–8 minutes and are automatically refreshed
+1. **Session Warm-up:** On startup, the fetcher hits the `nseindia.com` homepage with specific browser headers (`Referer`, `User-Agent`) to capture a valid authentication cookie.
+2. **Contract Metadata:** It queries `option-chain-contract-info` to dynamically extract the list of valid, upcoming expiry dates.
+3. **Targeted Payload:** It passes the user's selected expiry directly to the `option-chain-v3` endpoint. 
 
-The raw response is a JSON object with two blocks:
-- `records` — contains `underlyingValue`, `timestamp`, `expiryDates`, and `data` (130 strikes, `expiryDate=None`)
-- `filtered` — contains the same strikes but with `expiryDate` populated in `DD-MM-YYYY` format
-
-We use `filtered.data` as the primary source for strike-level data (since it has expiry dates), and `records.data` as a fallback for additional strikes. Deduplication by `(strikePrice, expiryDate)` prevents double-counting.
+Instead of downloading the massive 20MB+ master option chain and filtering it in Python, this architecture forces the NSE server to do the heavy lifting. The server returns a lightweight, pre-filtered JSON payload containing only the exact strikes for the requested week, drastically reducing memory usage and bandwidth.
 
 ### How OI Classification Works?
 
@@ -77,9 +69,9 @@ This means a single snapshot already carries the full intraday picture. `calcula
 Classifications reset naturally at market open each day because NSE resets `changeinOpenInterest` to 0 at 9:15 AM.
 
 ### Data Flow (End to End)
-NSE API (via nse library)
+NSE API (via custom requests session)
 <br>
-▼ fetcher.py — singleton session, retry logic, exponential backoff
+▼ fetcher.py — in-memory cookie management, v3 endpoint routing, exponential backoff
 <br></br>
 ▼ store.py — parses raw JSON, normalises expiry dates, stores
 rolling deque of {oi, doi, price, price_change, volume}
@@ -96,7 +88,7 @@ N seconds (user-configurable), pushes updates to UI
 &emsp;&emsp;&emsp;&emsp;&emsp;├── oi_table.py — symmetrical CE | Strike | PE DataTable<br>
 &emsp;&emsp;&emsp;&emsp;&emsp;├── sidebar.py — quick links panel (persisted to ~/.nse_terminal/links.json)<br>
 &emsp;&emsp;&emsp;&emsp;&emsp;├── expiry_modal.py — expiry date selector<br>
-&emsp;&emsp;&emsp;&emsp;&emsp;├── switcher.py — terminal switcher (NSE / BSE)<br>
+&emsp;&emsp;&emsp;&emsp;&emsp;├── switcher.py — terminal switcher (NSE / Banknifty / BhartiArtl / LT, etc.)<br>
 &emsp;&emsp;&emsp;&emsp;&emsp;└── interval_modal.py — poll interval selector (1–10 minutes)<br>
 
 ### Threading Model
@@ -111,7 +103,6 @@ This guarantees exactly one fetch loop is ever running — no overlapping worker
 
 User data that survives app restarts:
 - **Quick links** — stored in `~/.nse_terminal/links.json`
-- **NSE session cookies** — stored in the project directory by the `nse` library, avoiding a full re-authentication on every startup
 
 ### Market Hours & Holidays
 
@@ -122,8 +113,12 @@ The terminal is aware of:
 
 Outside market hours the terminal continues to display the last known data snapshot. The header badge switches between &emsp; <span style="color: #26ed65;"><strong>●</strong></span> `Market Open` &emsp;and &emsp;<span style="color: #ff4d4d;"><strong>●</strong></span> `Market Closed` in real time.
 
-## **New to Options Market?**
-If you are new to option chains and want to have a basic over view of those things work there, please go through the [OPTION_CHAIN.md](OPTION_CHAIN.md)
+
+## **How can you help us?**
+This project is open for contributions. You can help us by contributing to the features mentioned in the [CONTRIBUTION.md](CONTRIBUTION.md)
+<br>
+The [CONTRIBUTION.md](CONTRIBUTION.md) will be updated as we move on with the fixes and new features.<br>
+To understand how the tool works under the hood please go through the [Tech Stack](#tech-stack-and-architecture) section
 
 ### **Special Note**
 
@@ -133,9 +128,8 @@ We believe powerful trading tools should not be locked behind expensive subscrip
 
 **It is not finished. It was never meant to be finished by us alone.**
 
-The BSE terminal is waiting to be unlocked and many more are on the roadmap.
 
-Every line of this codebase is open. Every architectural decision is documented. Every known limitation is written down honestly in [CONTRIBUTION.md](CONTRIBUTION.md) — not hidden, not glossed over.
+Every line of this codebase is open. Every architectural decision is documented — not hidden, not glossed over.
 
 If you are a developer who trades, or a trader who codes, or simply someone enthusiastic, who believes that open source financial tooling matters — **this project is for you.**
 
