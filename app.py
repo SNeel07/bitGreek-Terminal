@@ -3,7 +3,18 @@
   app.py — Dynamic Stocks Options Terminal
 -------------------------------------------
 
-The driver code to run the terminal app
+Live options OI terminal built with Textual.
+Supports switching between NIFTY index and individual equities.
+
+Keybindings (global):
+    q — Quit
+    s — Toggle quick links sidebar
+    t — Switch active stock/index
+    i — Change fetch interval
+
+Keybindings (Terminal screen):
+    r — Force refresh
+    f — Filter expiry date
 """
 import urllib.request
 import json
@@ -31,7 +42,7 @@ from widgets.oi_table import OITable
 from widgets.header import MarketHeader
 
 from widgets.sidebar import LinkSidebar
-from widgets.switcher import TerminalSwitcherModal
+from widgets.switcher import TerminalSwitcherModal  # We will update this modal next
 from widgets.interval_modal import IntervalModal, INTERVALS
 from widgets.update_modal import UpdateModal
 
@@ -39,7 +50,7 @@ import urllib.request
 import json
 import threading
 
-CURRENT_VERSION = "v1.7.0"
+CURRENT_VERSION = "v1.7.1"
 
 def check_for_updates(app_instance):
     """
@@ -49,7 +60,7 @@ def check_for_updates(app_instance):
     api_url = "https://api.github.com/repos/SNeel07/bitGreek-Terminal/releases/latest"
     
     try:
-        
+        # User-Agent is required by GitHub's API
         req = urllib.request.Request(api_url, headers={'User-Agent': 'BitGreek-Terminal-App'})
         
         with urllib.request.urlopen(req, timeout=3) as response:
@@ -57,9 +68,10 @@ def check_for_updates(app_instance):
             
         latest_version = data.get("tag_name")
         
-
+        # Compare current version to the latest GitHub tag
         if latest_version and latest_version != CURRENT_VERSION:
             
+            # Find the actual .exe download link in the assets array
             download_url = None
             for asset in data.get("assets", []):
                 if asset.get("name", "").endswith(".exe"):
@@ -68,10 +80,8 @@ def check_for_updates(app_instance):
             
             release_notes = (
                 "A new version of BitGreek Terminal is available!\n\n"
-                "Update: Introduced a per strike PE CE difference bar "
-                "Click [b cyan]Install Update[/b cyan] to download the "
-                "new setup file. You can safely continue using the terminal meanwhile "
-                "while the update downloads in the background."
+                "Update: Added dynamic fetching list for 185 F&O stocks."
+                "        Stable UI frame while data refreshing."
             )
             
             # If we found an executable, alert the main Textual app
@@ -94,84 +104,13 @@ ATM_WING         = 70
 IST              = ZoneInfo("Asia/Kolkata")
 
 
+
 # --------------- COMPANIES MAPPING ----------------
-# Mapping tickers to their specific NSE company descriptors
+# Base indices. Equities will be fetched dynamically on startup.
 SUPPORTED_SYMBOLS = {
     "NIFTY": "NIFTY 50 Index",
     "BANKNIFTY": "NIFTY Bank Index",
-    "RELIANCE": "Reliance Industries Limited",
-    "HDFCBANK": "HDFC Bank Limited",
-    "BHARTIARTL": "Bharti Airtel Limited",
-    "AXISBANK": "Axis Bank Limited",
-    "ICICIBANK": "ICICI Bank Limited",
-    "SBIN": "State Bank of India",
-    "TCS": "Tata Consultancy Services Limited",
-    "BAJFINANCE": "Bajaj Finance Limited",
-    "LT": "Larsen & Toubro Limited",
-    "HINDUNILVR": "Hindustan Unilever Limited",
-    "INFY": "Infosys Limited",
-    "SUNPHARMA": "Sun Pharmaceutical Industries Limited",
-    "ADANIPORTS": "Adani Ports and Special Economic Zone Limited",
-    "MARUTI": "Maruti Suzuki India Limited",
-    "ADANIENT": "Adani Enterprises Limited",
-    "M&M": "Mahindra & Mahindra Limited",
-    "TITAN": "Titan Company Limited",
-    "ITC": "ITC Limited",
-    "NTPC": "NTPC Limited",
-    "ULTRACEMCO": "UltraTech Cement Limited",
-    "ONGC": "Oil & Natural Gas Corporation Limited",
-    "JSWSTEEL": "JSW Steel Limited",
-    "HCLTECH": "HCL Technologies Limited",
-    "BEL": "Bharat Electronics Limited",
-    "BAJAJ-AUTO": "Bajaj Auto Limited",
-    "NESTLEIND": "Nestle India Limited",
-    "COALINDIA": "Coal India Limited",
-    "POWERGRID": "Power Grid Corporation of India Limited",
-    "BAJAJFINSV": "Bajaj Finserv Limited",
-    "ASIANPAINT": "Asian Paints Limited",
-    "TATASTEEL": "Tata Steel Limited",
-    "HINDALCO": "Hindalco Industries Limited",
-    "ETERNAL": "Eternal Limited",
-    "GRASIM": "Grasim Industries Limited",
-    "SHRIRAMFIN": "Shriram Finance Limited",
-    "EICHERMOT": "Eicher Motors Limited",
-    "WIPRO": "Wipro Limited",
-    "INDIGO": "InterGlobe Aviation Limited",
-    "SBILIFE": "SBI Life Insurance Company Limited",
-    "JIOFIN": "Jio Financial Services Limited",
-    "TECHM": "Tech Mahindra Limited",
-    "TRENT": "Trent Limited",
-    "TMPV": "Tata Motors Passenger Vehicles Limited",
-    "APOLLOHOSP": "Apollo Hospitals Enterprise Limited",
-    "HDFCLIFE": "HDFC Life Insurance Company Limited",
-    "CIPLA": "Cipla Limited",
-    "TATACONSUM": "Tata Consumer Products Limited",
-    "DRREDDY": "Dr. Reddy's Laboratories Limited",
-    "MAXHEALTH": "Max Healthcare Institute Limited",
-    "KOTAKBANK": "Kotak Mahindra Bank Limited"
 }
-
-
-# --------------- NSE TRADING HOLIDAYS 2026 ----------------------
-
-NSE_HOLIDAYS_2026 = {
-    "2026-01-15", "2026-01-26", "2026-03-03", "2026-03-26", "2026-03-31",
-    "2026-04-03", "2026-04-14", "2026-05-01", "2026-05-28", "2026-06-26",
-    "2026-09-14", "2026-10-02", "2026-10-20", "2026-11-08", "2026-11-10",
-    "2026-11-24", "2026-12-25"
-}
-
-def is_trading_holiday(date: "datetime") -> bool:
-    return date.strftime("%Y-%m-%d") in NSE_HOLIDAYS_2026
-
-def is_market_open() -> bool:
-    now = datetime.now(IST)
-    if now.weekday() >= 5:
-        return False
-    if is_trading_holiday(now):
-        return False
-    hhmm = now.hour * 100 + now.minute
-    return 915 <= hhmm < 1530
 
 
 # ------------- SCREEN DEFINITION --------------------
@@ -196,6 +135,8 @@ class OptionsDisplayScreen(Screen):
     
 
     def on_mount(self) -> None:
+        # Explicitly hide the download progress widget on startup
+        # CSS display:none alone can flash briefly before being applied
         try:
             self.query_one("#download_progress", Static).display = False
         except Exception:
@@ -204,6 +145,7 @@ class OptionsDisplayScreen(Screen):
     def action_force_refresh(self):
         self.app.action_force_refresh()
 
+    # Filter Expiry feature
     def action_change_expiry(self):
         self.app.action_change_expiry()
 
@@ -273,14 +215,17 @@ class TradingTerminal(App):
         super().__init__()
         self.fetcher          = NSEDataFetcher()
         self.store            = OptionsDataStore()
+        
+        # NEW: Initialize the dynamic holidays set
+        self.dynamic_holidays = set() 
+        
         self.last_raw_data    = None
         self.target_expiry    = None
         self._refresh_event   = threading.Event()
+        self._rendered_cells  = {}
         
-        # Track the active dynamic equity symbol (Default to NIFTY)
         self.current_symbol   = "NIFTY"
         self.poll_interval    = DEFAULT_INTERVAL
-
         self.show_straddle    = False
 
     def on_mount(self) -> None:
@@ -288,20 +233,49 @@ class TradingTerminal(App):
         self.install_screen(OptionsDisplayScreen(), name="options_display")
         self.push_screen("options_display")
         
-        # Launch the update checker in the background
-        threading.Thread(target=check_for_updates, args=(self,), daemon=True).start()
+        # NEW: Fetch the holidays and symbols dynamically right as the app starts
+        self.dynamic_holidays = self.fetcher.fetch_trading_holidays()
+        dynamic_symbols = self.fetcher.fetch_fo_symbols()
         
+        # Update the global dictionary in-place so the switcher modal sees them
+        for sym in dynamic_symbols:
+            if sym not in SUPPORTED_SYMBOLS:
+                # We map the ticker to itself since the API doesn't provide the full company name
+                SUPPORTED_SYMBOLS[sym] = sym 
+        
+        threading.Thread(target=check_for_updates, args=(self,), daemon=True).start()
         self.update_data_loop()
+
+    def is_market_open(self) -> bool:
+        """Dynamic market hours and holiday checker."""
+        now = datetime.now(IST)
+        if now.weekday() >= 5: # Saturday or Sunday
+            return False
+            
+        # Check against the dynamically pulled list
+        if now.strftime("%Y-%m-%d") in self.dynamic_holidays:
+            return False
+            
+        hhmm = now.hour * 100 + now.minute
+        return 915 <= hhmm < 1530
 
     def show_update_modal(self, version: str, download_url: str, release_notes: str):
         """Called by the background updater thread to display the modal."""
         self.push_screen(UpdateModal(version, download_url, release_notes))
 
     def rebuild_columns(self):
-        """Dynamically clears and reconstructs the data table columns."""
+        """Dynamically clears and reconstructs the data table columns with specific keys."""
         try:
             table = self.screen.query_one("#spurt_table")
             table.clear(columns=True)
+            self._rendered_cells.clear()
+            
+            # 1. Define distinct string keys for every column
+            self.col_keys = [
+                "ce_doi", "ce_oi", "ce_ltp", "ce_trend", 
+                "left_bar", "strike", "right_bar", "net_oi", 
+                "pe_trend", "pe_ltp", "pe_oi", "pe_doi"
+            ]
             
             cols = [
                 "CE ΔOI", "CE OI", "CE LTP", "CE Trend", 
@@ -309,11 +283,13 @@ class TradingTerminal(App):
                 "PE Trend", "PE LTP", "PE OI", "PE ΔOI"
             ]
             
-            # Conditionally append the Straddle column
             if self.show_straddle:
+                self.col_keys.append("straddle")
                 cols.append("Straddle")
                 
-            table.add_columns(*cols)
+            # 2. Map the keys to the columns upon creation
+            for key, label in zip(self.col_keys, cols):
+                table.add_column(label, key=key)
         except Exception:
             pass
 
@@ -329,12 +305,12 @@ class TradingTerminal(App):
         
         # Instantly refresh the UI to show the new column data
         if self.last_raw_data is not None:
-            self.refresh_ui(is_market_open())
+            self.refresh_ui(self.is_market_open())
 
     def action_switch_terminal(self):
-        
+        # Pass the dynamic keys to the switcher modal
         self.push_screen(
-            TerminalSwitcherModal(self.current_symbol),
+            TerminalSwitcherModal(self.current_symbol, list(SUPPORTED_SYMBOLS.keys())),
             self._on_symbol_switched
         )
 
@@ -360,12 +336,13 @@ class TradingTerminal(App):
             
         self.current_symbol = selected_symbol
         
-        # Reset current data buffers so it doesn't mix up calculations between stock transitions
+        # Reset current data buffers so we don't mix up calculations between stock transitions
         self.last_raw_data = None
         self.target_expiry = None
+        self._rendered_cells.clear()
         self.store.clear_store()
         
-        # Dynamically change the structural target symbol in the active widgets
+        # Dynamically change the structural target symbol in our active widgets
         try:
             header = self.screen.query_one("#market_header", MarketHeader)
             header.symbol = selected_symbol
@@ -386,6 +363,7 @@ class TradingTerminal(App):
         self._refresh_event.set()
 
 
+    # Delete these two methods completely:
     def action_change_expiry(self):
         expiries = getattr(self.store, 'available_expiries', [])
         if not expiries:
@@ -400,6 +378,7 @@ class TradingTerminal(App):
             
             # Clear old data so the UI doesn't show the wrong strikes while loading
             self.last_raw_data = None
+            self._rendered_cells.clear()
             self.store.clear_store()
             
             # Force the background worker to fetch the new date instantly
@@ -415,7 +394,7 @@ class TradingTerminal(App):
         Uses self.current_symbol dynamically to pull whichever target stock is active.
         """
         while True:
-            market_open   = is_market_open()
+            market_open   = self.is_market_open()
             active_ticker = self.current_symbol
             now_str       = datetime.now(IST).strftime("%H:%M:%S")
 
@@ -428,8 +407,60 @@ class TradingTerminal(App):
                 timeout=4,
             )
 
-            # Pass the active dynamic ticker straight to your scraper object
+            # CRITICAL PASS: Pass the active dynamic ticker straight to your scraper object
             raw_data = self.fetcher.get_option_chain(active_ticker, self.target_expiry)
+
+            # --- MOCK DATA CHANGE FOR AFTER-HOURS UI TESTING ---
+            """
+            import random
+
+            if raw_data:
+                records = raw_data.get("records")
+                if isinstance(records, dict):
+                    records["timestamp"] = datetime.now(IST).strftime("%d-%b-%Y %H:%M:%S")
+
+                def mutate_option_rows(rows):
+                    if not isinstance(rows, list):
+                        return
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        for side in ("CE", "PE"):
+                            option = row.get(side)
+                            if not isinstance(option, dict):
+                                continue
+
+                            def numeric(value, default=0.0):
+                                try:
+                                    if value is None or str(value).strip() in ("", "-"):
+                                        return default
+                                    return float(value)
+                                except (TypeError, ValueError):
+                                    return default
+
+                            # Deliberately synthetic movement for visual testing only.
+                            shift_oi = random.randint(-100000, 100000)
+                            shift_price = random.uniform(-2.0, 2.0)
+                            option["openInterest"] = max(
+                                0, int(numeric(option.get("openInterest")) + shift_oi)
+                            )
+                            option["changeinOpenInterest"] = int(
+                                numeric(option.get("changeinOpenInterest")) + shift_oi
+                            )
+                            option["lastPrice"] = max(
+                                0.1, numeric(option.get("lastPrice")) + shift_price
+                            )
+                            option["change"] = (
+                                numeric(option.get("change")) + shift_price
+                            )
+
+                if isinstance(records, dict):
+                    mutate_option_rows(records.get("data"))
+                filtered = raw_data.get("filtered")
+                if isinstance(filtered, dict):
+                    mutate_option_rows(filtered.get("data"))
+            # --- END MOCK DATA CHANGE --- ---
+            """
 
             # Ensure the user didn't change tickers mid-fetch cycle
             if raw_data and self.current_symbol == active_ticker:
@@ -444,7 +475,7 @@ class TradingTerminal(App):
                     timeout=6,
                 )
 
-
+            # Wait for interval duration, or break sleep loop instantly on key commands
             self._refresh_event.clear()
             self._refresh_event.wait(timeout=self.poll_interval)
 
@@ -467,64 +498,67 @@ class TradingTerminal(App):
         except Exception:
             return
 
-        table.clear()
-
-        strikes     = self.store.get_all_strikes()
-        underlying  = self.store.current_underlying
-        current_exp = getattr(self.store, 'current_expiry', None) or "Awaiting API"
-
-        self.sub_title = f"{self.current_symbol} | Expiry: {current_exp} | Spot: ₹{underlying:,.2f}"
+        strikes = self.store.get_all_strikes()
+        underlying = self.store.current_underlying
+        current_exp = getattr(self.store, "current_expiry", None) or "Awaiting API"
+        self.sub_title = (
+            f"{self.current_symbol} | Expiry: {current_exp} | Spot: ₹{underlying:,.2f}"
+        )
 
         if underlying == 0 or not strikes:
             return
 
         closest = min(strikes, key=lambda x: abs(x - underlying))
-        idx     = strikes.index(closest)
-        lo      = max(0, idx - ATM_WING)
-        hi      = min(len(strikes), idx + ATM_WING + 1)
+        idx = strikes.index(closest)
+        lo = max(0, idx - ATM_WING)
+        hi = min(len(strikes), idx + ATM_WING + 1)
         display = strikes[lo:hi]
 
-        # Calculate the maximum difference for proportional scaling ---
         max_diff = 1
         for strike in display:
-            c_hist = self.store.get_history(strike, 'CE')
-            p_hist = self.store.get_history(strike, 'PE')
-            c_oi = c_hist[-1].get('oi', 0) if c_hist else 0
-            p_oi = p_hist[-1].get('oi', 0) if p_hist else 0
+            c_hist = self.store.get_history(strike, "CE")
+            p_hist = self.store.get_history(strike, "PE")
+            c_oi = c_hist[-1].get("oi", 0) if c_hist else 0
+            p_oi = p_hist[-1].get("oi", 0) if p_hist else 0
             max_diff = max(max_diff, abs(p_oi - c_oi))
-            
-        MAX_BAR_WIDTH = 12  # Maximum characters for each side
+
+        MAX_BAR_WIDTH = 12
+        current_display_keys = set()
+        existing_row_keys = {row_key.value for row_key in table.rows.keys()}
+
+        def cell_signature(value):
+            if isinstance(value, Text):
+                return (
+                    "Text",
+                    value.plain,
+                    tuple((span.start, span.end, str(span.style)) for span in value.spans),
+                )
+            return ("value", str(value))
 
         for strike in display:
-            ce_hist = self.store.get_history(strike, 'CE')
-            pe_hist = self.store.get_history(strike, 'PE')
+            strike_key = str(strike)
+            current_display_keys.add(strike_key)
 
+            ce_hist = self.store.get_history(strike, "CE")
+            pe_hist = self.store.get_history(strike, "PE")
             ce_trend = SpurtCalculator.classify_spurt(ce_hist)
             pe_trend = SpurtCalculator.classify_spurt(pe_hist)
 
-            ce = ce_hist[-1] if ce_hist else {'price': 0.0, 'oi': 0, 'doi': 0}
-            pe = pe_hist[-1] if pe_hist else {'price': 0.0, 'oi': 0, 'doi': 0}
-            
-            # --- UPDATED: Split visual histogram bars ---
-            diff = pe.get('oi', 0) - ce.get('oi', 0)
-            
-            # Calculate proportional length
+            ce = ce_hist[-1] if ce_hist else {"price": 0.0, "oi": 0, "doi": 0}
+            pe = pe_hist[-1] if pe_hist else {"price": 0.0, "oi": 0, "doi": 0}
+            diff = pe.get("oi", 0) - ce.get("oi", 0)
+
             bar_len = int((abs(diff) / max_diff) * MAX_BAR_WIDTH)
-            
-            # Force a minimum of 1 block if there is a difference
             if diff != 0 and bar_len == 0:
                 bar_len = 1
-                
+
             bar_char = "█" * bar_len
-            
             empty_space = " " * MAX_BAR_WIDTH
 
             if diff < 0:
-                # Call heavy
                 left_bar = Text(bar_char.rjust(MAX_BAR_WIDTH), style="bold red")
                 right_bar = Text(empty_space)
             elif diff > 0:
-                # Put heavy
                 left_bar = Text(empty_space)
                 right_bar = Text(bar_char.ljust(MAX_BAR_WIDTH), style="bold green")
             else:
@@ -533,10 +567,9 @@ class TradingTerminal(App):
 
             strike_cell = Text(
                 f"{strike:,.0f}",
-                style="bold yellow" if strike == closest else "white"
+                style="bold yellow" if strike == closest else "white",
             )
 
-            
             if diff > 0:
                 net_oi_cell = Text(f"+{diff:,}", style="bold green")
             elif diff < 0:
@@ -544,31 +577,53 @@ class TradingTerminal(App):
             else:
                 net_oi_cell = Text("0", style="white")
 
-            # --- UPDATED: Add net_oi_cell to the row ---
-            straddle = ce.get('price', 0.0) + pe.get('price', 0.0)
+            straddle = ce.get("price", 0.0) + pe.get("price", 0.0)
+            row_data_dict = {
+                "ce_doi": self._style_doi(ce.get("doi", 0)),
+                "ce_oi": f"{ce.get('oi', 0):,}",
+                "ce_ltp": f"{ce.get('price', 0.0):.2f}",
+                "ce_trend": self._style_trend(ce_trend),
+                "left_bar": left_bar,
+                "strike": strike_cell,
+                "right_bar": right_bar,
+                "net_oi": net_oi_cell,
+                "pe_trend": self._style_trend(pe_trend),
+                "pe_ltp": f"{pe.get('price', 0.0):.2f}",
+                "pe_oi": f"{pe.get('oi', 0):,}",
+                "pe_doi": self._style_doi(pe.get("doi", 0)),
+            }
 
-            # --- UPDATED: Package the row data dynamically ---
-            row_data = [
-                self._style_doi(ce.get('doi', 0)),
-                f"{ce.get('oi', 0):,}",
-                f"{ce.get('price', 0.0):.2f}",
-                self._style_trend(ce_trend),
-                left_bar,
-                strike_cell,
-                right_bar,
-                net_oi_cell,
-                self._style_trend(pe_trend),
-                f"{pe.get('price', 0.0):.2f}",
-                f"{pe.get('oi', 0):,}",
-                self._style_doi(pe.get('doi', 0)),
-            ]
-
-            # Append the calculated straddle if the toggle is ON
             if self.show_straddle:
-                row_data.append(Text(f"{straddle:.2f}", style="cyan"))
+                row_data_dict["straddle"] = Text(f"{straddle:.2f}", style="cyan")
 
-            # Unpack the list directly into the row
-            table.add_row(*row_data)
+            if strike_key not in existing_row_keys:
+                row_values = [
+                    row_data_dict[key] for key in self.col_keys
+                    if key in row_data_dict
+                ]
+                table.add_row(*row_values, key=strike_key)
+                for col_key, value in row_data_dict.items():
+                    self._rendered_cells[(strike_key, col_key)] = cell_signature(value)
+            else:
+                for col_key, value in row_data_dict.items():
+                    cache_key = (strike_key, col_key)
+                    signature = cell_signature(value)
+                    if self._rendered_cells.get(cache_key) != signature:
+                        table.update_cell(
+                            row_key=strike_key,
+                            column_key=col_key,
+                            value=value,
+                        )
+                        self._rendered_cells[cache_key] = signature
+
+        for row_key in existing_row_keys:
+            if row_key not in current_display_keys:
+                table.remove_row(row_key)
+                stale_cache_keys = [
+                    key for key in self._rendered_cells if key[0] == row_key
+                ]
+                for key in stale_cache_keys:
+                    del self._rendered_cells[key]
 
     @staticmethod
     def _style_trend(text: str) -> Text:
@@ -589,8 +644,7 @@ class TradingTerminal(App):
         return Text("0", style="white")
 
 
-if __name__ == "__main__":
     
-    # Launch the terminal
-    app = TradingTerminal()
-    app.run()
+# Launch the terminal
+app = TradingTerminal()
+app.run()
