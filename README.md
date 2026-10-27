@@ -107,9 +107,9 @@ User data that survives app restarts:
 ### Market Hours & Holidays
 
 The terminal is aware of:
-- **Weekends** — Saturday and Sunday are always closed
+- **Weekends** — Saturday and Sunday are usually closed. Special trading sessions may occur.
 - **NSE trading holidays** — a hardcoded set of all 17 official NSE holidays for the current year (see `NSE_HOLIDAYS_2026` in `app.py`)
-- **Trading hours** — 09:15 to 15:30 IST
+- **Trading hours** — 09:15 to 15:40 IST
 
 Outside market hours the terminal continues to display the last known data snapshot. The header badge switches between &emsp; <span style="color: #26ed65;"><strong>●</strong></span> `Market Open` &emsp;and &emsp;<span style="color: #ff4d4d;"><strong>●</strong></span> `Market Closed` in real time.
 
