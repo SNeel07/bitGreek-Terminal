@@ -144,42 +144,40 @@ class OptionsDataStore:
                 self.current_expiry       = selected_display
                 self._current_expiry_norm = new_norm
 
-            # ANTI-CLONING FIX: Get the true nearest expiry
-            nearest_norm = _normalise_expiry(self.available_expiries[0])
-
+            # The fetcher calls NSE's v3 endpoint for the requested expiry.
+            # Rows from that response often omit expiryDate, so assign blank
+            # expiry fields to the selected expiry, not always the nearest one.
+            selected_norm = self._current_expiry_norm
             seen_keys = set()
-            all_rows  = []
+            all_rows = []
 
-            for row in (records.get('data') or []):
-                if not isinstance(row, dict):
-                    continue
-                strike = safe_float(row.get('strikePrice', 0))
-                
-                # Assign blank dates to the true nearest expiry
-                key = (strike, nearest_norm)
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    all_rows.append((row, nearest_norm))
+            def row_expiry(row):
+                ce = row.get("CE") or {}
+                pe = row.get("PE") or {}
+                raw_exp = (
+                    row.get("expiryDate")
+                    or row.get("expiryDates")
+                    or ce.get("expiryDate")
+                    or pe.get("expiryDate")
+                    or ""
+                )
+                return _normalise_expiry(str(raw_exp)) if raw_exp else selected_norm
 
-            for row in (filtered.get('data') or []):
-                if not isinstance(row, dict):
-                    continue
-                strike = safe_float(row.get('strikePrice', 0))
-                ce     = row.get('CE') or {}
-                pe     = row.get('PE') or {}
-                raw_exp = (row.get('expiryDate')
-                           or row.get('expiryDates')
-                           or ce.get('expiryDate')
-                           or pe.get('expiryDate')
-                           or '')
-                
-                # Assign blank dates to the true nearest expiry
-                exp_norm = _normalise_expiry(str(raw_exp)) if raw_exp else nearest_norm
-                
-                key = (strike, exp_norm)
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    all_rows.append((row, exp_norm))
+            # Process records.data first because it is the primary chain data.
+            # If filtered.data contains duplicate strikes, it will be skipped.
+            for source_rows in (records.get("data") or [], filtered.get("data") or []):
+                for row in source_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    strike = safe_float(row.get("strikePrice", 0))
+                    if strike == 0:
+                        continue
+
+                    exp_norm = row_expiry(row)
+                    key = (strike, exp_norm)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        all_rows.append((row, exp_norm))
 
             # Store into rolling deques
             for row, exp_norm in all_rows:
